@@ -204,3 +204,13 @@ clean:
 CLANG ?= clang-14
 CFLAGS := -O2 -g -Wall -Werror $(CFLAGS)
 
+
+# Custom h2mux receive windows; temporary outputs stay outside the source tree.
+H2WINDOW_BIN ?= /tmp/mihomo-h2window
+.PHONY: h2window-test h2window-build
+h2window-test:
+	CGO_ENABLED=0 GOAMD64=v3 go test -p 2 -trimpath -tags with_gvisor -count=1 github.com/metacubex/sing-mux ./adapter -run '^Test(H2MuxStreamWindow|YamuxWrapStreamCloseWrite)'
+
+h2window-build: VERSION := $(VERSION)-h2window
+h2window-build:
+	GOAMD64=v3 $(GOBUILD) -p 2 -o '$(H2WINDOW_BIN)' .

@@ -21,15 +21,16 @@ type SingMux struct {
 }
 
 type SingMuxOption struct {
-	Enabled        bool         `proxy:"enabled,omitempty"`
-	Protocol       string       `proxy:"protocol,omitempty"`
-	MaxConnections int          `proxy:"max-connections,omitempty"`
-	MinStreams     int          `proxy:"min-streams,omitempty"`
-	MaxStreams     int          `proxy:"max-streams,omitempty"`
-	Padding        bool         `proxy:"padding,omitempty"`
-	Statistic      bool         `proxy:"statistic,omitempty"`
-	OnlyTcp        bool         `proxy:"only-tcp,omitempty"`
-	BrutalOpts     BrutalOption `proxy:"brutal-opts,omitempty"`
+	Enabled           bool         `proxy:"enabled,omitempty"`
+	Protocol          string       `proxy:"protocol,omitempty"`
+	H2MuxStreamWindow int          `proxy:"h2mux-stream-window,omitempty"`
+	MaxConnections    int          `proxy:"max-connections,omitempty"`
+	MinStreams        int          `proxy:"min-streams,omitempty"`
+	MaxStreams        int          `proxy:"max-streams,omitempty"`
+	Padding           bool         `proxy:"padding,omitempty"`
+	Statistic         bool         `proxy:"statistic,omitempty"`
+	OnlyTcp           bool         `proxy:"only-tcp,omitempty"`
+	BrutalOpts        BrutalOption `proxy:"brutal-opts,omitempty"`
 }
 
 type BrutalOption struct {
@@ -97,14 +98,15 @@ func NewSingMux(option SingMuxOption, proxy ProxyAdapter) (ProxyAdapter, error) 
 
 	singDialer := proxydialer.NewSingDialer(proxydialer.New(proxy, option.Statistic))
 	client, err := mux.NewClient(mux.Options{
-		Dialer:         singDialer,
-		Logger:         log.SingLogger,
-		Protocol:       option.Protocol,
-		MaxConnections: option.MaxConnections,
-		MinStreams:     option.MinStreams,
-		MaxStreams:     option.MaxStreams,
-		Padding:        option.Padding,
-		TCPTimeout:     C.DefaultTCPTimeout,
+		Dialer:            singDialer,
+		Logger:            log.SingLogger,
+		Protocol:          option.Protocol,
+		H2MuxStreamWindow: option.H2MuxStreamWindow,
+		MaxConnections:    option.MaxConnections,
+		MinStreams:        option.MinStreams,
+		MaxStreams:        option.MaxStreams,
+		Padding:           option.Padding,
+		TCPTimeout:        C.DefaultTCPTimeout,
 		Brutal: mux.BrutalOptions{
 			Enabled:    option.BrutalOpts.Enabled,
 			SendBPS:    utils.StringToBps(option.BrutalOpts.Up),
