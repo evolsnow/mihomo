@@ -74,6 +74,7 @@ jobs:
       - name: Build release archive
         env:
           TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.verify.outputs.version }}
         run: make "$TARGET.gz"
 
       - name: Verify archive and binary
