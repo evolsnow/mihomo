@@ -3,7 +3,7 @@ name: Release h2
 on:
   push:
     tags:
-      - 'v*-h2'
+      - 'v*-h2*'
 
 permissions:
   contents: read
