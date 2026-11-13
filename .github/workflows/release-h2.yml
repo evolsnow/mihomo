@@ -1,0 +1,142 @@
+name: Release h2
+
+on:
+  push:
+    tags:
+      - 'v*-h2'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-h2-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CGO_ENABLED: '0'
+  GOTOOLCHAIN: local
+  SKIP_INTEROP_TEST: '1'
+  SKIP_CONCURRENT_TEST: '1'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      upstream_version: ${{ steps.version.outputs.upstream_version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check release version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="$(make -s version)"
+          test "$RELEASE_TAG" = "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "upstream_version=${VERSION%-h2}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-download-base-url: 'https://github.com/MetaCubeX/go/releases/download/build'
+          go-version: '1.26'
+          cache-dependency-path: |
+            go.sum
+            third_party/sing-mux/go.sum
+
+      - name: Test custom mux windows
+        run: make h2window-test
+
+      - name: Test with release build tags
+        run: go test -p 2 -tags with_gvisor -count=1 -timeout 10m ./...
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux-amd64-v1, linux-amd64-v3, linux-arm64]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-download-base-url: 'https://github.com/MetaCubeX/go/releases/download/build'
+          go-version: '1.26'
+          cache-dependency-path: |
+            go.sum
+            third_party/sing-mux/go.sum
+
+      - name: Build release archive
+        env:
+          TARGET: ${{ matrix.target }}
+        run: make "$TARGET.gz"
+
+      - name: Verify archive and binary
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          ARCHIVE="bin/mihomo-$TARGET-$VERSION.gz"
+          gzip -t "$ARCHIVE"
+          gzip -dc "$ARCHIVE" > "$RUNNER_TEMP/mihomo"
+          go version -m "$RUNNER_TEMP/mihomo"
+          if [[ "$TARGET" == linux-amd64-* ]]; then
+            chmod +x "$RUNNER_TEMP/mihomo"
+            "$RUNNER_TEMP/mihomo" -v | tee "$RUNNER_TEMP/version.txt"
+            grep -F "$VERSION" "$RUNNER_TEMP/version.txt"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: bin/*.gz
+          if-no-files-found: error
+
+  release:
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: bin
+          merge-multiple: true
+
+      - name: Prepare release notes and checksums
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          UPSTREAM_VERSION: ${{ needs.verify.outputs.upstream_version }}
+        run: |
+          cd bin
+          test -f "mihomo-linux-amd64-v1-$VERSION.gz"
+          test -f "mihomo-linux-amd64-v3-$VERSION.gz"
+          test -f "mihomo-linux-arm64-$VERSION.gz"
+          printf '%s\n' "$VERSION" > version.txt
+          sha256sum *.gz version.txt > checksums.txt
+          sha256sum -c checksums.txt
+          cat > "$RUNNER_TEMP/release.md" << EOF
+          基于 [Mihomo $UPSTREAM_VERSION](https://github.com/MetaCubeX/mihomo/releases/tag/$UPSTREAM_VERSION)，保留每个代理节点的 h2mux 单流接收窗口定制。
+
+          - Linux x86_64：选择 linux-amd64-v1；支持 x86-64-v3 的 CPU 可选择 linux-amd64-v3。
+          - Linux ARM64：选择 linux-arm64。
+          - 所有产物启用 with_gvisor，使用 CGO_ENABLED=0 构建。
+          - 解压后执行 chmod +x，再通过 -v 检查版本；checksums.txt 提供 SHA-256 校验。
+
+          源码提交：$GITHUB_SHA
+          EOF
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.verify.outputs.version }}
+          body_path: ${{ runner.temp }}/release.md
+          files: bin/*
+          fail_on_unmatched_files: true
+          make_latest: true

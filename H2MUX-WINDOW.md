@@ -29,6 +29,39 @@ make h2window-build
 
 候选二进制默认写入 `/tmp/mihomo-h2window`，构建使用 `GOAMD64=v3`、`CGO_ENABLED=0` 和 `with_gvisor`。也可以通过 `H2WINDOW_BIN` 指定其他临时路径。
 
+本地构建和 CI 打包统一使用 `<上游版本>-h2`，当前为 `v1.19.34-h2`；二进制版本和压缩包文件名均使用此版本。同步上游后更新 `Makefile` 中的 `UPSTREAM_VERSION`，也可以在构建时通过 `UPSTREAM_VERSION` 覆盖。
+
 测试覆盖配置解析及错误参数、实际 4/16/32 MiB SETTINGS、连接级额度不变、同一会话上的多流复用。
 
 本改动基于 fork 当前的 `Meta` 分支，未合入 `Alpha` 的其他上游变更。
+
+## 同步上游与发布
+
+更新前先提交需要保留的本地修改。首次配置上游：
+
+```bash
+git remote add upstream https://github.com/MetaCubeX/mihomo.git
+```
+
+在 `Meta` 分支按正式版本合并，以下版本号替换为目标版本：
+
+```bash
+git switch Meta
+git pull --ff-only origin Meta
+git fetch --no-tags upstream refs/tags/v1.19.34
+git merge --no-edit FETCH_HEAD
+```
+
+直接合并 `FETCH_HEAD`，避免本地或 fork 的同名标签与上游标签指向不同提交。冲突需要先解决；取消合并可执行 `git merge --abort`。如果上游更新了 `sing-mux`，还需同步 `third_party/sing-mux` 的依赖源码并保留定制补丁。
+
+更新 `Makefile` 中的 `UPSTREAM_VERSION` 及本文版本说明，执行 `make h2window-test`、`make h2window-build`，检查 `/tmp/mihomo-h2window -v`，然后提交修改。发布时使用独立的 `-h2` 标签：
+
+```bash
+git push origin Meta
+git tag -a v1.19.34-h2 -m 'Release v1.19.34-h2'
+git push origin v1.19.34-h2
+```
+
+`Release h2` 工作流要求标签与 `make version` 一致，测试通过后构建 Linux x86_64 通用版（v1）、x86_64-v3 和 ARM64，自动上传 `.gz`、`version.txt` 和 `checksums.txt` 到 GitHub Release。发布成功后可从 Actions 页面和 Release 资产列表核对结果。
+
+原上游的 Build、Test、CMFA 工作流仅在 `MetaCubeX/mihomo` 运行；本 fork 的发布统一由 `Release h2` 处理。

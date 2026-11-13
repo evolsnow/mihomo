@@ -25,6 +25,8 @@ env:
   REGISTRY: docker.io
 jobs:
   build:
+    # Fork releases use release-h2.yml; the jobs below manage upstream branches.
+    if: ${{ github.repository == 'MetaCubeX/mihomo' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -187,14 +189,16 @@ jobs:
       run: go env
 
     - name: Set variables
+      env:
+        RELEASE_VERSION: ${{ github.event.inputs.version }}
       run: |
-        VERSION="${GITHUB_REF_NAME,,}-$(git rev-parse --short HEAD)"
-        VERSION="${VERSION//\//-}"
-        PackageVersion="$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | jq -r '.tag_name' | sed 's/v//g' | awk -F '.' '{$NF = $NF + 1; print}' OFS='.').${VERSION/-/.}"
-        if [ -n "${{ github.event.inputs.version }}" ]; then
-          VERSION=${{ github.event.inputs.version }}
-          PackageVersion="${VERSION#v}"
+        if [ -n "${RELEASE_VERSION}" ]; then
+          VERSION="$(make -s version "UPSTREAM_VERSION=${RELEASE_VERSION%-h2}")"
+        else
+          VERSION="$(make -s version)"
         fi
+        PackageVersion="${VERSION#v}"
+        PackageVersion="${PackageVersion//-/.}"
         echo "VERSION=${VERSION}" >> $GITHUB_ENV
         echo "PackageVersion=${PackageVersion}" >> $GITHUB_ENV
       

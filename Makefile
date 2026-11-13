@@ -1,15 +1,8 @@
 NAME=mihomo
 BINDIR=bin
-BRANCH=$(shell git branch --show-current)
-ifeq ($(BRANCH),Alpha)
-VERSION=alpha-$(shell git rev-parse --short HEAD)
-else ifeq ($(BRANCH),Beta)
-VERSION=beta-$(shell git rev-parse --short HEAD)
-else ifeq ($(BRANCH),)
-VERSION=$(shell git describe --tags)
-else
-VERSION=$(shell git rev-parse --short HEAD)
-endif
+# Keep this aligned with the upstream release used as the fork's base.
+UPSTREAM_VERSION ?= v1.19.34
+VERSION ?= $(UPSTREAM_VERSION)-h2
 
 BUILDTIME=$(shell date -u)
 GOBUILD=CGO_ENABLED=0 go build -tags with_gvisor -trimpath -ldflags '-X "github.com/metacubex/mihomo/constant.Version=$(VERSION)" \
@@ -207,10 +200,12 @@ CFLAGS := -O2 -g -Wall -Werror $(CFLAGS)
 
 # Custom h2mux receive windows; temporary outputs stay outside the source tree.
 H2WINDOW_BIN ?= /tmp/mihomo-h2window
-.PHONY: h2window-test h2window-build
+.PHONY: version h2window-test h2window-build
+version:
+	@printf '%s\n' '$(VERSION)'
+
 h2window-test:
 	CGO_ENABLED=0 GOAMD64=v3 go test -p 2 -trimpath -tags with_gvisor -count=1 github.com/metacubex/sing-mux ./adapter -run '^Test(H2MuxStreamWindow|YamuxWrapStreamCloseWrite)'
 
-h2window-build: VERSION := $(VERSION)-h2window
 h2window-build:
 	GOAMD64=v3 $(GOBUILD) -p 2 -o '$(H2WINDOW_BIN)' .
